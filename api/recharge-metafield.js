@@ -19,13 +19,23 @@ export default async function handler(req, res) {
   };
 
   // 1. Get Recharge customer ID
-  const { customers } = await fetch(
-    `https://api.rechargeapps.com/customers?shopify_customer_id=${numericId}`,
-    { headers: HEADERS }
-  ).then(r => r.json());
-  const rcid = customers?.[0]?.id;
+  // const { customers } = await fetch(
+  //   `https://api.rechargeapps.com/customers?shopify_customer_id=${numericId}`,
+  //   { headers: HEADERS }
+  // ).then(r => r.json());
+  // const rcid = customers?.[0]?.id;
 
-  if (!rcid) return res.status(404).json({ error: "Recharge customer not found" });
+  // if (!rcid) return res.status(404).json({ error: "Recharge customer not found" });
+  const rechargeRes = await fetch(
+  `https://api.rechargeapps.com/customers?shopify_customer_id=${numericId}`,
+  { headers: HEADERS }
+);
+const rechargeData = await rechargeRes.json();
+console.log("Recharge response:", JSON.stringify(rechargeData));
+const customers = rechargeData.customers;
+const rcid = customers?.[0]?.id;
+if (!rcid) return res.status(404).json({ error: "Recharge customer not found", rechargeData });
+
 
   // 2. Try POST to create
   const postRes = await fetch("https://api.rechargeapps.com/metafields", {
