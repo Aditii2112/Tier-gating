@@ -1,9 +1,7 @@
 // api/recharge-metafield.js
 
 export default async function handler(req, res) {
-  if (req.headers["x-secret"] !== process.env.WEBHOOK_SECRET) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
+  
 
   const { shopify_customer_id, tier } = req.body;
 
