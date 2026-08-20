@@ -19,78 +19,46 @@ export default async function handler(req, res) {
   );
   const rechargeData = await rechargeRes.json();
   const rcid = rechargeData.customers?.[0]?.id;
-  if (!rcid) {
-    return res.status(404).json({ error: "Recharge customer not found", rechargeData });
-  }
+  if (!rcid) return res.status(404).json({ error: "Recharge customer not found", rechargeData });
 
-  // 2. Try POST to create the metafield
-  const metafieldPayload = {
-    owner_resource: "customer",
-    owner_id: rcid,
-    namespace: "ditto",
-    key: "tiers_reached",
-    value_type: "json_string",
-    value: JSON.stringify([tier])
-  };
-  console.log("Metafield payload:", JSON.stringify(metafieldPayload));
-
+  // 2. Try POST to create
   const postRes = await fetch("https://api.rechargeapps.com/metafields", {
     method: "POST",
     headers: HEADERS,
-    body: JSON.stringify(metafieldPayload)
+    body: JSON.stringify({
+      metafield: {
+        owner_resource: "customer",
+        owner_id: rcid,
+        namespace: "ditto",
+        key: "tiers_reached",
+        value_type: "json_string",
+        value: JSON.stringify([tier])
+      }
+    })
   });
-  const postBody = await postRes.json();
-  console.log("POST status:", postRes.status, "body:", JSON.stringify(postBody));
 
-  if (postRes.status === 201 || postRes.status === 200) {
-    return res.status(200).json({ ok: true, rcid, action: "created", result: postBody });
-  }
-
-  // 3. If 422 (already exists), GET existing metafield, merge tier in, then PUT
+  // 3. If 422 (already exists), GET ID then PUT — flat overwrite, as you want
   if (postRes.status === 422) {
-    const getRes = await fetch(
+    const { metafields } = await fetch(
       `https://api.rechargeapps.com/metafields?owner_resource=customer&owner_id=${rcid}`,
       { headers: HEADERS }
-    );
-    const getBody = await getRes.json();
-    const existing = getBody.metafields?.find(
+    ).then(r => r.json());
+    const existing = metafields?.find(
       m => m.namespace === "ditto" && m.key === "tiers_reached"
     );
+    if (!existing) return res.status(500).json({ error: "Metafield not found after 422" });
 
-    if (!existing) {
-      return res.status(500).json({ error: "422 but no existing metafield found", postBody, getBody });
-    }
-
-    const currentTiers = JSON.parse(existing.value || "[]");
-    if (!currentTiers.includes(tier)) currentTiers.push(tier);
-
-    const putPayload = {
-      owner_resource: "customer",
-      owner_id: rcid,
-      value_type: "json_string",
-      value: JSON.stringify(currentTiers)
-    };
-    console.log("PUT payload:", JSON.stringify(putPayload));
-
-    const putRes = await fetch(`https://api.rechargeapps.com/metafields/${existing.id}`, {
+    await fetch(`https://api.rechargeapps.com/metafields/${existing.id}`, {
       method: "PUT",
       headers: HEADERS,
-      body: JSON.stringify(putPayload)
+      body: JSON.stringify({
+        metafield: {
+          value_type: "json_string",
+          value: JSON.stringify([tier])
+        }
+      })
     });
-    const putBody = await putRes.json();
-    console.log("PUT status:", putRes.status, "body:", JSON.stringify(putBody));
-
-    if (putRes.status !== 200) {
-      return res.status(500).json({ error: "PUT failed", status: putRes.status, putBody });
-    }
-
-    return res.status(200).json({ ok: true, rcid, action: "updated", result: putBody });
   }
 
-  // Anything else is a real failure — surface it, don't hide it
-  return res.status(500).json({
-    error: "POST failed with unexpected status",
-    status: postRes.status,
-    postBody
-  });
+  return res.status(200).json({ ok: true });
 }
